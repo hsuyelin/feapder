@@ -9,6 +9,7 @@ Created on 2018-07-25 11:49:08
 """
 
 import copy
+import os
 import re
 
 import requests
@@ -201,7 +202,7 @@ class Request:
     @property
     def _proxies_pool(self):
         if not self.__class__.proxies_pool:
-            self.__class__.proxies_pool = ProxyPool()
+            self.__class__.proxies_pool = tools.import_cls(setting.PROXY_POOL)()
 
         return self.__class__.proxies_pool
 
@@ -224,9 +225,13 @@ class Request:
     @property
     def _render_downloader(self):
         if not self.__class__.render_downloader:
-            self.__class__.render_downloader = tools.import_cls(
-                setting.RENDER_DOWNLOADER
-            )()
+            try:
+                self.__class__.render_downloader = tools.import_cls(
+                    setting.RENDER_DOWNLOADER
+                )()
+            except AttributeError:
+                log.error('当前是渲染模式，请安装 pip install "feapder[render]"')
+                os._exit(0)
 
         return self.__class__.render_downloader
 
@@ -331,7 +336,7 @@ class Request:
         proxies = self.requests_kwargs.get("proxies", -1)
         if proxies == -1 and setting.PROXY_ENABLE and setting.PROXY_EXTRACT_API:
             while True:
-                proxies = self._proxies_pool.get()
+                proxies = self._proxies_pool.get_proxy()
                 if proxies:
                     self.requests_kwargs.update(proxies=proxies)
                     break
@@ -421,6 +426,12 @@ class Request:
             return re.sub(
                 "http.*?//", "", proxies.get("http", "") or proxies.get("https", "")
             )
+
+    def del_proxy(self):
+        proxy = self.get_proxy()
+        if proxy:
+            self._proxies_pool.del_proxy(proxy)
+            del self.requests_kwargs["proxies"]
 
     def get_headers(self) -> dict:
         return self.requests_kwargs.get("headers", {})
